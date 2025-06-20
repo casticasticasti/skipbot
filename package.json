@@ -1,7 +1,7 @@
 {
   "name": "skipbot",
-  "version": "2.0.0",
-  "description": "Telegram bot para bypass - Browser Native",
+  "version": "1.0.0",
+  "description": "Telegram bot para bypass automático",
   "main": "api/webhook.js",
   "scripts": {
     "start": "node api/webhook.js",

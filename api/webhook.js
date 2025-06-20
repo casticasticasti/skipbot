@@ -23,42 +23,69 @@ const isPostazap = (url) => {
   );
 };
 
-// Función principal simplificada
+// Función principal - Automatización inteligente sin browser
 const performBypass = async (link, chatId) => {
-  // Crear URL con el enlace pre-llenado
-  const bypassUrl = `https://bypass.vip?url=${encodeURIComponent(link)}`;
-  
-  const instructionMessage = `🚀 **Bypass automático iniciado**
+  try {
+    // Crear URL pre-configurada con el enlace ya pegado
+    const bypassUrl = `https://bypass.vip?url=${encodeURIComponent(link)}`;
+    
+    // Enviar mensaje con instrucciones automáticas
+    const captchaMessage = await bot.sendMessage(chatId, `🤖 **Bypass automático iniciado**
 
-🔗 **Tu enlace:**
-\`${link}\`
+🔗 **Enlace procesado:**
+\`${link.substring(0, 60)}...\`
 
-📋 **Pasos súper simples:**
+✅ **Todo listo para ti:**
+• Enlace ya pegado automáticamente
+• Solo resuelve el captcha
+• Regresa aquí por el resultado
 
-1️⃣ **Toca "🌐 Abrir Bypass"** (se abre en tu navegador)
-2️⃣ **Resuelve el captcha** (2-3 minutos máximo)  
-3️⃣ **Copia el resultado** que aparece
-4️⃣ **¡Listo!** 
+👆 **Toca "🚀 Resolver Captcha"**`, {
+      parse_mode: 'Markdown',
+      reply_markup: {
+        inline_keyboard: [[
+          { text: '🚀 Resolver Captcha', url: bypassUrl }
+        ]]
+      }
+    });
 
-⚡ **Ventajas:**
-• Tu navegador (más rápido)
-• Sin errores de servidor
-• Funciona siempre
+    // Esperar 5 segundos y actualizar mensaje
+    setTimeout(async () => {
+      try {
+        await bot.editMessageText(`🔄 **Captcha en progreso...**
 
-💡 **Tip:** Mantén esta conversación abierta para más enlaces`;
+🔗 **Enlace:** \`${link.substring(0, 50)}...\`
 
-  await bot.sendMessage(chatId, instructionMessage, {
-    parse_mode: 'Markdown',
-    reply_markup: {
-      inline_keyboard: [
-        [{ text: '🌐 Abrir Bypass', url: bypassUrl }],
-        [{ text: '📋 Copiar enlace original', callback_data: `copy_${link.substring(0, 50)}` }],
-        [{ text: '❓ Ayuda', callback_data: 'help' }]
-      ]
-    }
-  });
+📋 **Estado actual:**
+✅ Ventana abierta en tu navegador
+✅ Enlace pegado automáticamente
+⏳ Esperando que resuelvas el captcha
 
-  return null; // No esperamos resultado automático
+🎯 **Cuando termines:**
+• Copia el resultado final
+• Pégalo aquí como respuesta
+• ¡O usa el botón de abajo!`, {
+          chat_id: chatId,
+          message_id: captchaMessage.message_id,
+          parse_mode: 'Markdown',
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '✅ Ya resolví - Dame resultado', callback_data: `check_${chatId}` }],
+              [{ text: '🔄 Abrir de nuevo', url: bypassUrl }],
+              [{ text: '❌ Cancelar', callback_data: `cancel_${chatId}` }]
+            ]
+          }
+        });
+      } catch (editError) {
+        console.log('Error editando mensaje:', editError.message);
+      }
+    }, 5000);
+
+    return captchaMessage.message_id;
+
+  } catch (error) {
+    throw error;
+  }
 };
 
 // Manejar callback queries
@@ -66,76 +93,64 @@ bot.on('callback_query', async (callbackQuery) => {
   const chatId = callbackQuery.message.chat.id;
   const data = callbackQuery.data;
   
-  if (data.startsWith('copy_')) {
-    await bot.answerCallbackQuery(callbackQuery.id, { 
-      text: '📋 Enlace copiado al portapapeles',
-      show_alert: false 
+  if (data.startsWith('check_')) {
+    await bot.answerCallbackQuery(callbackQuery.id, { text: '📋 Envía el resultado' });
+    
+    await bot.editMessageText(`✅ **¡Perfecto!**
+
+🎯 **Ahora envía el resultado:**
+• Copia el enlace final de bypass.vip
+• Pégalo aquí como mensaje
+• Te ayudo a verificar que sea correcto
+
+💡 **Tip:** El resultado debe empezar con https://`, {
+      chat_id: chatId,
+      message_id: callbackQuery.message.message_id,
+      parse_mode: 'Markdown',
+      reply_markup: {
+        inline_keyboard: [[
+          { text: '🔄 Volver a abrir bypass.vip', url: 'https://bypass.vip' }
+        ]]
+      }
     });
     
-    const originalLink = data.replace('copy_', '');
-    await bot.sendMessage(chatId, `📋 **Enlace para copiar:**
-
-\`${originalLink}\`
-
-💡 **Instrucciones:**
-1. Selecciona el texto de arriba
-2. Copia (Ctrl+C / Cmd+C)
-3. Pega en bypass.vip`, { parse_mode: 'Markdown' });
+  } else if (data.startsWith('cancel_')) {
+    await bot.answerCallbackQuery(callbackQuery.id, { text: '❌ Cancelado' });
     
-  } else if (data === 'help') {
-    await bot.answerCallbackQuery(callbackQuery.id, { text: '📖 Ayuda enviada' });
-    
-    const helpMessage = `📖 **Ayuda - SkipBot**
+    await bot.editMessageText(`❌ **Proceso cancelado**
 
-🔧 **¿Cómo funciona?**
-1. Envías cualquier enlace
-2. Toco "Abrir Bypass" 
-3. Resuelves captcha en tu navegador
-4. Copias el resultado
+🔄 **Para usar el bot:**
+• Envía cualquier enlace
+• Resuelve el captcha cuando aparezca
+• Recibe el resultado automáticamente
 
-✅ **Ventajas:**
-• 100% funcional siempre
-• Usa tu navegador favorito
-• Sin errores de servidor
-• Más rápido que automatización
-
-🔗 **Enlaces soportados:**
-• bypass.vip compatible
-• Acortadores protegidos
-• Enlaces con captcha
-
-💡 **Tips:**
-• Guarda bypass.vip en favoritos
-• Usa extensiones de bypass
-• El proceso toma 2-3 minutos máximo
-
-🆘 **¿Problemas?** Reenvía el enlace`;
-
-    await bot.sendMessage(chatId, helpMessage, { parse_mode: 'Markdown' });
+💡 **Tip:** El proceso toma 2-3 minutos`, {
+      chat_id: chatId,
+      message_id: callbackQuery.message.message_id,
+      parse_mode: 'Markdown'
+    });
   }
 });
 
-// Manejadores principales
+// Almacenar enlaces en proceso (simple cache en memoria)
+const activeLinks = new Map();
+
+// Manejadores del bot
 const handleStart = (msg) => {
   const chatId = msg.chat.id;
-  const welcomeMessage = `🤖 **SkipBot** - Bypass inteligente
+  bot.sendMessage(chatId, `🤖 **SkipBot** - Bypass automático
 
-🚀 **Súper simple:**
-• Envía cualquier enlace
-• Toca "Abrir Bypass"  
-• Resuelve captcha en tu navegador
-• ¡Listo!
+🚀 **Súper fácil:**
+1️⃣ Envías enlace
+2️⃣ Resuelves captcha
+3️⃣ ¡Listo!
 
-✅ **Ventajas:**
-• 100% funcional
-• Tu navegador (más rápido)
-• Sin errores de servidor
+📱 **Ventajas:**
+• Usa tu navegador favorito
+• Enlace pegado automáticamente
+• Sin instalaciones adicionales
 
-💡 **Ejemplo:** Envía https://ejemplo.com/enlace
-
-¡Pruébalo ahora! 🎯`;
-  
-  bot.sendMessage(chatId, welcomeMessage, { parse_mode: 'Markdown' });
+¡Envía tu enlace! 🔗`, { parse_mode: 'Markdown' });
 };
 
 const handleMessage = async (msg) => {
@@ -150,24 +165,44 @@ const handleMessage = async (msg) => {
   }
 
   if (!text || !isValidUrl(text)) {
-    bot.sendMessage(chatId, '❌ **Enlace no válido**\n\n💡 **Ejemplo:** https://ejemplo.com/enlace', { parse_mode: 'Markdown' });
+    // Verificar si es un resultado de bypass anterior
+    if (text && text.includes('t.me/') && activeLinks.has(chatId)) {
+      // Es un resultado de Telegram
+      activeLinks.delete(chatId);
+      
+      bot.sendMessage(chatId, `✅ **¡Bypass completado exitosamente!**
+
+🎯 **Resultado recibido:**
+\`${text}\`
+
+📋 **¡Enlace listo para usar!**
+🎉 **¡Proceso completado!**`, { 
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [[
+            { text: '🚀 Abrir enlace', url: text }
+          ]]
+        }
+      });
+      return;
+    }
+    
+    bot.sendMessage(chatId, '❌ Envía un enlace válido\n\nEjemplo: https://ejemplo.com/enlace');
     return;
   }
 
   // Caso especial: Postazap
   if (isPostazap(text)) {
-    const postazapMessage = `🔗 **Postazap detectado**
+    bot.sendMessage(chatId, `🔗 **Postazap detectado**
 
-⚠️ **Requiere extensión de navegador**
+⚠️ Requiere extensión de navegador
 
-📋 **Mejor opción:**
-1. Instala extensión bypass en Chrome
-2. Abre el enlace directamente
-3. Espera 80 segundos automáticos
+📋 **Instrucciones:**
+1. Abre Chrome con extensión
+2. Pega: \`${text}\`
+3. Espera 80 segundos
 
-🔗 **Tu enlace:** \`${text}\``;
-    
-    bot.sendMessage(chatId, postazapMessage, { 
+💡 **Alternativa:** Usa extensión bypass`, { 
       parse_mode: 'Markdown',
       reply_markup: {
         inline_keyboard: [[
@@ -178,24 +213,35 @@ const handleMessage = async (msg) => {
     return;
   }
 
-  // Procesar bypass normal
+  // Guardar enlace activo
+  activeLinks.set(chatId, text);
+
+  // Mensaje de procesamiento
+  const processingMsg = await bot.sendMessage(chatId, '🔄 Preparando bypass automático...');
+
   try {
     await performBypass(text, chatId);
+    
+    // Eliminar mensaje de procesamiento
+    await bot.deleteMessage(chatId, processingMsg.message_id);
+
   } catch (error) {
-    bot.sendMessage(chatId, `❌ **Error procesando enlace**
+    await bot.deleteMessage(chatId, processingMsg.message_id);
+    
+    bot.sendMessage(chatId, `❌ **Error**
 
-💡 **Solución:** Usa bypass.vip manualmente
+💡 **Solución:** Reenvía el enlace o usa bypass manual
 
-🔗 **Tu enlace:** \`${text}\``, { 
+🌐 **Manual:** https://bypass.vip`, { 
       parse_mode: 'Markdown',
       reply_markup: {
         inline_keyboard: [[
-          { text: '🌐 Bypass manual', url: 'https://bypass.vip' }
+          { text: '🔄 Bypass manual', url: 'https://bypass.vip' }
         ]]
       }
     });
     
-    console.error('Error:', error.message);
+    console.error('Error en bypass:', error.message);
   }
 };
 
@@ -207,10 +253,10 @@ module.exports = async (req, res) => {
       
       if (update.message) {
         await handleMessage(update.message);
-      }
-      
-      if (update.callback_query) {
-        await bot.answerCallbackQuery(update.callback_query.id);
+      } else if (update.callback_query) {
+        // Manejar callback queries
+        const callbackQuery = update.callback_query;
+        bot.emit('callback_query', callbackQuery);
       }
       
       res.status(200).json({ ok: true });
@@ -221,7 +267,7 @@ module.exports = async (req, res) => {
   } else {
     res.status(200).json({ 
       status: 'SkipBot running! 🤖',
-      version: '2.0.0 - Browser Native'
+      version: '1.0.0'
     });
   }
 };
