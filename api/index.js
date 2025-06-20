@@ -338,12 +338,12 @@ Intenta de nuevo en unos minutos o usa el enlace manualmente.
 
 // Bloque 5: Configuración de webhook para producción
 if (process.env.NODE_ENV === 'production') {
-  app.post('/webhook', (req, res) => {
+  app.post('/api/webhook', (req, res) => {
     bot.processUpdate(req.body);
     res.sendStatus(200);
   });
 
-  app.get('/', (req, res) => {
+  app.get('/api', (req, res) => {
     res.json({ 
       status: 'SkipBot is running! 🤖',
       bot: '@paseabot',
@@ -353,7 +353,7 @@ if (process.env.NODE_ENV === 'production') {
 
   app.listen(PORT, () => {
     console.log(`🚀 SkipBot webhook listening on port ${PORT}`);
-    bot.setWebHook(`${WEBHOOK_URL}/webhook`);
+    bot.setWebHook(`${WEBHOOK_URL}/api/webhook`);
   });
 } else {
   console.log('🤖 SkipBot iniciado en modo desarrollo (polling)');
