@@ -1,4 +1,4 @@
-# 🤖 SkipBot
+# 🤖 SkipBot!
 
 Bot de Telegram para bypass automático de enlaces acortados y protegidos.
 
