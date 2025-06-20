@@ -102,63 +102,6 @@ const performBypass = async (link, chatId) => {
       throw new Error('No se pudo encontrar el botón de envío');
     }
 
-    // Esperar a que aparezca el captcha (siempre aparecerá)
-    await delay(3000);
-    
-    // Tomar screenshot de toda la página con el captcha
-    const captchaScreenshot = await page.screenshot({
-      type: 'png',
-      fullPage: true
-    });
-
-    // Enviar screenshot con botón automático para resolver
-    const captchaMessage = await bot.sendPhoto(chatId, captchaScreenshot, {
-      caption: `🤖 **Captcha detectado - Abriendo automáticamente...**
-
-🔗 **Enlace:** \`${link.substring(0, 50)}...\`
-
-📋 **Pasos:**
-1️⃣ Se abrirá bypass.vip automáticamente
-2️⃣ Resuelve el captcha que aparece
-3️⃣ Espera el resultado (máximo 5 minutos)
-
-⏱️ **Estado:** Preparando ventana...`,
-      parse_mode: 'Markdown',
-      reply_markup: {
-        inline_keyboard: [
-          [{ text: '🌐 Abriendo bypass.vip...', url: `https://bypass.vip?link=${encodeURIComponent(link)}` }],
-          [{ text: '❌ Cancelar proceso', callback_data: `cancel_${chatId}` }]
-        ]
-      }
-    });
-
-    // Actualizar mensaje para indicar que está esperando
-    setTimeout(async () => {
-      try {
-        await bot.editMessageCaption(`🤖 **Captcha en progreso...**
-
-🔗 **Enlace:** \`${link.substring(0, 50)}...\`
-
-✅ **Ventana abierta** - Resuelve el captcha
-⏳ **Esperando resultado...**
-
-💡 Si no se abrió automáticamente, toca el botón de abajo`, {
-          chat_id: chatId,
-          message_id: captchaMessage.message_id,
-          parse_mode: 'Markdown',
-          reply_markup: {
-            inline_keyboard: [
-              [{ text: '🌐 Abrir bypass.vip manualmente', url: 'https://bypass.vip' }],
-              [{ text: '📋 Pegar enlace', callback_data: `paste_${chatId}` }],
-              [{ text: '❌ Cancelar', callback_data: `cancel_${chatId}` }]
-            ]
-          }
-        });
-      } catch (editError) {
-        console.log('Error editando mensaje:', editError.message);
-      }
-    }, 3000);
-
     // Mantener el browser abierto y esperar resultado
     try {
       await page.waitForSelector('.popup-body', {
@@ -431,28 +374,31 @@ const handleMessage = async (msg) => {
   } catch (error) {
     await bot.deleteMessage(chatId, processingMsg.message_id);
     
-    const errorMessage = `
+    // Solo mostrar error si no es el error esperado del captcha
+    if (!error.message.includes('libnss3.so') && !error.message.includes('Failed to launch')) {
+      const errorMessage = `
 ❌ **Error al procesar el enlace**
 
 🔍 **Posibles causas:**
 • Enlace no soportado
 • Servidor temporalmente no disponible
-• Captcha requerido
+• Error de conexión
 
 💡 **Solución:**
 Intenta de nuevo en unos minutos o usa el enlace manualmente.
 
 🌐 **Bypass manual:** https://bypass.vip
-    `;
-    
-    bot.sendMessage(chatId, errorMessage, { 
-      parse_mode: 'Markdown',
-      reply_markup: {
-        inline_keyboard: [[
-          { text: '🔄 Intentar manualmente', url: 'https://bypass.vip' }
-        ]]
-      }
-    });
+      `;
+      
+      bot.sendMessage(chatId, errorMessage, { 
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [[
+            { text: '🔄 Intentar manualmente', url: 'https://bypass.vip' }
+          ]]
+        }
+      });
+    }
     
     console.error('Error en bypass:', error.message);
   }
