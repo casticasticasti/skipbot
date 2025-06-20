@@ -1,10 +1,11 @@
 const TelegramBot = require('node-telegram-bot-api');
-const { chromium } = require('playwright-core');
+const puppeteer = require('puppeteer-core');
+const chromium = require('@sparticuz/chromium');
 require('dotenv').config();
 
 const bot = new TelegramBot(process.env.BOT_TOKEN);
 
-// Funciones auxiliares
+// Funciones auxiliares (igual que el CLI)
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 const isValidUrl = (urlString) => {
@@ -24,66 +25,79 @@ const isPostazap = (url) => {
   );
 };
 
-// Función principal de bypass
+// Función principal de bypass (adaptada del CLI exitoso)
 const performBypass = async (link, chatId) => {
   let browser;
-  
+  let captchaMessage;
+
   try {
-    browser = await chromium.launch({
-      headless: true,
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-accelerated-2d-canvas',
-        '--no-first-run',
-        '--no-zygote',
-        '--single-process',
-        '--disable-gpu'
-      ]
+    // Configuración igual que el CLI pero para Vercel
+    browser = await puppeteer.launch({
+      args: chromium.args,
+      defaultViewport: chromium.defaultViewport,
+      executablePath: await chromium.executablePath(),
+      headless: chromium.headless,
+      ignoreHTTPSErrors: true,
     });
 
     const page = await browser.newPage();
-    
+
+    // Navegar a bypass.vip (igual que CLI)
     await page.goto('https://bypass.vip', {
-      waitUntil: 'networkidle0',
-      timeout: 30000
+      waitUntil: 'networkidle0'
     });
 
-    // Buscar y llenar el input
+    console.log('🌐 Página cargada: ' + await page.title());
+
+    // Buscar input (lógica del CLI)
     let inputFound = false;
     try {
       await page.waitForSelector('#bypassInput', { timeout: 5000 });
-      await page.evaluate(() => document.querySelector('#bypassInput').value = '');
-      await page.type('#bypassInput', link);
       inputFound = true;
     } catch (error) {
+      console.log('⚠️ No se encontró #bypassInput, buscando alternativas...');
       const inputSelector = await page.evaluate(() => {
         const inputs = Array.from(document.querySelectorAll('input'));
         const input = inputs.find(i => i.placeholder && i.placeholder.toLowerCase().includes('paste'));
-        return input ? (input.id || 'input-alt') : null;
+        return input ? input.id || 'input' + inputs.indexOf(input) : null;
       });
 
       if (inputSelector) {
+        console.log(`🔍 Input alternativo encontrado: ${inputSelector}`);
         const finalSelector = inputSelector.startsWith('#') ? inputSelector : '#' + inputSelector;
-        await page.type(finalSelector, link);
-        inputFound = true;
+        const inputHandle = await page.$(finalSelector);
+        if (inputHandle) {
+          await inputHandle.click({ clickCount: 3 });
+          await inputHandle.press('Backspace');
+          await inputHandle.type(link);
+          inputFound = true;
+        }
       }
     }
 
+    // Si el selector original funcionó
+    if (inputFound && await page.$('#bypassInput')) {
+      await page.evaluate(() => document.querySelector('#bypassInput').value = '');
+      await page.type('#bypassInput', link);
+      
+      const inputValue = await page.$eval('#bypassInput', el => el.value);
+      console.log('📝 Link ingresado:', inputValue);
+    }
+
     if (!inputFound) {
-      throw new Error('No se pudo encontrar el campo de entrada');
+      throw new Error('No se pudo encontrar el campo de entrada en bypass.vip');
     }
 
     await delay(1000);
 
-    // Hacer clic en el botón de envío
+    // Buscar botón (lógica del CLI)
     let buttonClicked = false;
     try {
       await page.waitForSelector('#submitButton', { timeout: 5000 });
       await page.click('#submitButton');
       buttonClicked = true;
     } catch (error) {
+      console.log('⚠️ No se encontró #submitButton, buscando alternativas...');
       buttonClicked = await page.evaluate(() => {
         const buttons = Array.from(document.querySelectorAll('button'));
         const submitBtn = buttons.find(b =>
@@ -102,204 +116,121 @@ const performBypass = async (link, chatId) => {
       throw new Error('No se pudo encontrar el botón de envío');
     }
 
-    // Mantener el browser abierto y esperar resultado
-    try {
-      await page.waitForSelector('.popup-body', {
-        visible: true,
-        timeout: 300000 // 5 minutos
-      });
+    // Aquí viene la parte clave: mostrar captcha y esperar (como el CLI)
+    await delay(3000);
 
-      const result = await page.$eval('.popup-body', el => el.textContent.trim());
-      
-      await browser.close();
-      
-      // Editar mensaje con resultado exitoso
+    // Tomar screenshot del captcha
+    const captchaScreenshot = await page.screenshot({
+      type: 'png',
+      fullPage: false,
+      clip: { x: 0, y: 0, width: 800, height: 600 }
+    });
+
+    // Enviar captcha con mensaje minimalista
+    captchaMessage = await bot.sendPhoto(chatId, captchaScreenshot, {
+      caption: `🔄 **Resuelve el captcha**
+
+🔗 \`${link.substring(0, 60)}...\`
+
+👆 **Toca el botón** → Resuelve el captcha → **Espera aquí**
+
+⏱️ Detectaré automáticamente cuando termines`,
+      parse_mode: 'Markdown',
+      reply_markup: {
+        inline_keyboard: [[
+          { text: '🌐 Resolver Captcha', url: 'https://bypass.vip' }
+        ]]
+      }
+    });
+
+    // Esperar resultado (igual que el CLI - 50 segundos)
+    await page.waitForSelector('.popup-body', {
+      visible: true,
+      timeout: 50000
+    });
+
+    // Obtener resultado
+    const result = await page.$eval('.popup-body', el => el.textContent.trim());
+    console.log('\n✅ Resultado:', result);
+
+    await browser.close();
+
+    // Verificar si es URL válida (igual que CLI)
+    const isValidResult = (urlString) => {
       try {
-        await bot.editMessageCaption(`✅ **¡Bypass completado exitosamente!**
+        const url = new URL(urlString);
+        return url.protocol === 'http:' || url.protocol === 'https:';
+      } catch (e) {
+        return false;
+      }
+    };
 
-🔗 **Enlace original:** \`${link.substring(0, 40)}...\`
+    if (isValidResult(result)) {
+      // Editar mensaje con resultado exitoso
+      await bot.editMessageCaption(`✅ **¡Completado!**
 
 🎯 **Resultado:**
 \`${result}\`
 
-📋 **¡Enlace listo para usar!**
-⏰ **Completado:** ${new Date().toLocaleTimeString('es-ES')}`, {
-          chat_id: chatId,
-          message_id: captchaMessage.message_id,
-          parse_mode: 'Markdown',
-          reply_markup: {
-            inline_keyboard: [[
-              { text: '🚀 Abrir enlace final', url: result }
-            ]]
-          }
-        });
-      } catch (editError) {
-        // Si no se puede editar, enviar mensaje nuevo
-        await bot.sendMessage(chatId, `✅ **¡Bypass completado!**
-
-🔗 **Resultado:** \`${result}\``, { 
-          parse_mode: 'Markdown',
-          reply_markup: {
-            inline_keyboard: [[
-              { text: '🚀 Abrir enlace', url: result }
-            ]]
-          }
-        });
-      }
+📋 **Copiado automáticamente**`, {
+        chat_id: chatId,
+        message_id: captchaMessage.message_id,
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [[
+            { text: '🚀 Abrir enlace', url: result }
+          ]]
+        }
+      });
 
       return result;
-
-    } catch (timeoutError) {
-      await browser.close();
-      
-      // Editar mensaje con timeout
-      try {
-        await bot.editMessageCaption(`⏰ **Tiempo agotado**
-
-🔗 **Enlace:** \`${link.substring(0, 50)}...\`
-
-❌ **El captcha no fue resuelto en 5 minutos**
-
-🔄 **Opciones:**
-• Envía el enlace de nuevo para reintentar
-• Usa bypass.vip manualmente
-• Prueba más tarde
-
-💡 **Tip:** Resuelve el captcha más rápido la próxima vez`, {
-          chat_id: chatId,
-          message_id: captchaMessage.message_id,
-          parse_mode: 'Markdown',
-          reply_markup: {
-            inline_keyboard: [
-              [{ text: '🔄 Reintentar ahora', callback_data: `retry_${link.substring(0, 30)}` }],
-              [{ text: '🌐 Bypass manual', url: 'https://bypass.vip' }]
-            ]
-          }
-        });
-      } catch (editError) {
-        await bot.sendMessage(chatId, '⏰ Tiempo agotado. Envía el enlace de nuevo para reintentar.');
-      }
-
-      return null;
+    } else {
+      throw new Error('El resultado no es una URL válida: ' + result);
     }
 
   } catch (error) {
     if (browser) {
       await browser.close();
     }
+    
+    // Si hay captchaMessage, editarlo con error
+    if (captchaMessage) {
+      try {
+        await bot.editMessageCaption(`⏰ **Tiempo agotado o error**
+
+🔄 **Opciones:**
+• Envía el enlace de nuevo
+• Usa bypass.vip manualmente
+
+💡 **Tip:** Resuelve el captcha más rápido`, {
+          chat_id: chatId,
+          message_id: captchaMessage.message_id,
+          parse_mode: 'Markdown',
+          reply_markup: {
+            inline_keyboard: [[
+              { text: '🌐 Bypass manual', url: 'https://bypass.vip' }
+            ]]
+          }
+        });
+      } catch (editError) {
+        console.log('Error editando mensaje de error:', editError.message);
+      }
+    }
+    
     throw error;
   }
 };
 
-// Manejar callback queries (botones inline)
-bot.on('callback_query', async (callbackQuery) => {
-  const chatId = callbackQuery.message.chat.id;
-  const data = callbackQuery.data;
-  
-  if (data.startsWith('retry_')) {
-    const link = data.replace('retry_', '');
-    await bot.answerCallbackQuery(callbackQuery.id, { text: '🔄 Reintentando...' });
-    
-    // Editar mensaje actual para mostrar reintento
-    try {
-      await bot.editMessageCaption(`🔄 **Reintentando bypass...**
-
-🔗 **Enlace:** \`${link}...\`
-
-⏳ **Preparando nueva sesión...**
-🤖 **Estado:** Iniciando proceso`, {
-        chat_id: chatId,
-        message_id: callbackQuery.message.message_id,
-        parse_mode: 'Markdown',
-        reply_markup: {
-          inline_keyboard: [[
-            { text: '⏳ Procesando...', callback_data: 'processing' }
-          ]]
-        }
-      });
-    } catch (editError) {
-      console.log('Error editando para reintento:', editError.message);
-    }
-    
-    // Reiniciar proceso
-    try {
-      await performBypass(link, chatId);
-    } catch (error) {
-      await bot.sendMessage(chatId, '❌ Error en reintento. Intenta manualmente con bypass.vip');
-    }
-    
-  } else if (data.startsWith('paste_')) {
-    await bot.answerCallbackQuery(callbackQuery.id, { text: '📋 Instrucciones enviadas' });
-    
-    const originalLink = callbackQuery.message.caption.match(/🔗 \*\*Enlace:\*\* \`([^`]+)\`/)?.[1] || 'tu-enlace';
-    
-    const pasteInstructions = `📋 **Resolución manual:**
-
-1️⃣ **Copia:** \`${originalLink}\`
-2️⃣ **Abre:** bypass.vip  
-3️⃣ **Pega** el enlace
-4️⃣ **Resuelve** el captcha
-5️⃣ **Copia** el resultado
-
-⚡ **Proceso rápido:** 2-3 minutos máximo`;
-    
-    await bot.sendMessage(chatId, pasteInstructions, {
-      parse_mode: 'Markdown',
-      reply_markup: {
-        inline_keyboard: [[
-          { text: '🌐 Abrir bypass.vip', url: 'https://bypass.vip' }
-        ]]
-      }
-    });
-    
-  } else if (data.startsWith('cancel_')) {
-    await bot.answerCallbackQuery(callbackQuery.id, { text: '❌ Cancelado' });
-    
-    try {
-      await bot.editMessageCaption(`❌ **Proceso cancelado**
-
-🔄 **Para usar el bot:**
-• Envía cualquier enlace
-• Resuelve el captcha cuando aparezca
-• Recibe el resultado automáticamente
-
-💡 **Tip:** El proceso toma 2-3 minutos`, {
-        chat_id: chatId,
-        message_id: callbackQuery.message.message_id,
-        parse_mode: 'Markdown',
-        reply_markup: {
-          inline_keyboard: [[
-            { text: '📱 Enviar otro enlace', callback_data: 'new_link' }
-          ]]
-        }
-      });
-    } catch (editError) {
-      await bot.sendMessage(chatId, '❌ Proceso cancelado. Envía otro enlace cuando quieras.');
-    }
-  }
-});
-
-// Manejadores del bot
+// Manejadores simples
 const handleStart = (msg) => {
   const chatId = msg.chat.id;
-  const welcomeMessage = `
-🤖 ¡Hola! Soy **SkipBot** (@paseabot)
+  bot.sendMessage(chatId, `🤖 **SkipBot** - Bypass automático
 
-🔗 **¿Cómo usar?**
-Simplemente envíame cualquier enlace y yo me encargaré de hacer el bypass automáticamente.
+📝 **Uso:** Envía cualquier enlace
+⚡ **Proceso:** 2-3 minutos máximo
+🔄 **Flujo:** Enlace → Captcha → Resultado
 
-📋 **Enlaces soportados:**
-• bypass.vip
-• postazap.com
-• Y muchos más...
-
-💡 **Ejemplo:**
-\`https://ejemplo.com/enlace\`
-
-¡Envía tu enlace y empezamos! 🚀
-  `;
-  
-  bot.sendMessage(chatId, welcomeMessage, { parse_mode: 'Markdown' });
+¡Envía tu enlace! 🚀`, { parse_mode: 'Markdown' });
 };
 
 const handleMessage = async (msg) => {
@@ -314,26 +245,22 @@ const handleMessage = async (msg) => {
   }
 
   if (!text || !isValidUrl(text)) {
-    bot.sendMessage(chatId, '❌ Por favor, envía un enlace válido.\n\nEjemplo: https://ejemplo.com/enlace');
+    bot.sendMessage(chatId, '❌ Envía un enlace válido\n\nEjemplo: https://ejemplo.com/enlace');
     return;
   }
 
+  // Caso especial: Postazap (igual que CLI)
   if (isPostazap(text)) {
-    const postazapMessage = `
-🔗 **Enlace de Postazap detectado**
+    bot.sendMessage(chatId, `🔗 **Postazap detectado**
 
-⚠️ Este tipo de enlace requiere extensión de navegador.
+⚠️ Requiere extensión de navegador
 
 📋 **Instrucciones:**
-1. Copia este enlace: \`${text}\`
-2. Ábrelo en Chrome con extensión
+1. Abre Chrome con extensión
+2. Pega: \`${text}\`
 3. Espera 80 segundos
-4. El enlace de Telegram aparecerá automáticamente
 
-💡 **Tip:** Instala una extensión de bypass en tu navegador para estos casos.
-    `;
-    
-    bot.sendMessage(chatId, postazapMessage, { 
+💡 **Alternativa:** Usa extensión bypass`, { 
       parse_mode: 'Markdown',
       reply_markup: {
         inline_keyboard: [[
@@ -344,57 +271,31 @@ const handleMessage = async (msg) => {
     return;
   }
 
-  const processingMsg = await bot.sendMessage(chatId, '🔄 Procesando enlace...\n⏳ Esto puede tomar hasta 60 segundos.');
+  // Mensaje de procesamiento minimalista
+  const processingMsg = await bot.sendMessage(chatId, '🔄 Iniciando bypass...');
 
   try {
     const result = await performBypass(text, chatId);
     
+    // Eliminar mensaje de procesamiento
     await bot.deleteMessage(chatId, processingMsg.message_id);
 
-    if (result) {
-      const successMessage = `
-✅ **¡Bypass completado!**
-
-🔗 **Resultado:**
-\`${result}\`
-
-📋 El enlace ha sido copiado. ¡Listo para usar!
-      `;
-      
-      bot.sendMessage(chatId, successMessage, { 
-        parse_mode: 'Markdown',
-        reply_markup: {
-          inline_keyboard: [[
-            { text: '🚀 Abrir enlace', url: result }
-          ]]
-        }
-      });
-    }
+    // Si llegamos aquí, el resultado ya se envió en performBypass
 
   } catch (error) {
     await bot.deleteMessage(chatId, processingMsg.message_id);
     
-    // Solo mostrar error si no es el error esperado del captcha
+    // Solo mostrar error si no es el error esperado
     if (!error.message.includes('libnss3.so') && !error.message.includes('Failed to launch')) {
-      const errorMessage = `
-❌ **Error al procesar el enlace**
+      bot.sendMessage(chatId, `❌ **Error**
 
-🔍 **Posibles causas:**
-• Enlace no soportado
-• Servidor temporalmente no disponible
-• Error de conexión
+💡 **Solución:** Reenvía el enlace o usa bypass manual
 
-💡 **Solución:**
-Intenta de nuevo en unos minutos o usa el enlace manualmente.
-
-🌐 **Bypass manual:** https://bypass.vip
-      `;
-      
-      bot.sendMessage(chatId, errorMessage, { 
+🌐 **Manual:** https://bypass.vip`, { 
         parse_mode: 'Markdown',
         reply_markup: {
           inline_keyboard: [[
-            { text: '🔄 Intentar manualmente', url: 'https://bypass.vip' }
+            { text: '🔄 Bypass manual', url: 'https://bypass.vip' }
           ]]
         }
       });
@@ -421,8 +322,7 @@ module.exports = async (req, res) => {
     }
   } else {
     res.status(200).json({ 
-      status: 'SkipBot Webhook is running! 🤖',
-      bot: '@paseabot',
+      status: 'SkipBot running! 🤖',
       version: '1.0.0'
     });
   }
