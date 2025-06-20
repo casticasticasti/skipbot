@@ -102,41 +102,106 @@ const performBypass = async (link, chatId) => {
       throw new Error('No se pudo encontrar el botón de envío');
     }
 
+    // Esperar a que aparezca el captcha (siempre aparecerá)
     await delay(3000);
     
-    const hasCaptcha = await page.evaluate(() => {
-      const captchaElements = document.querySelectorAll('[class*="captcha"], [id*="captcha"], iframe[src*="recaptcha"], iframe[src*="hcaptcha"]');
-      return captchaElements.length > 0;
+    // Tomar screenshot de toda la página con el captcha
+    const captchaScreenshot = await page.screenshot({
+      type: 'png',
+      fullPage: true
     });
 
-    if (hasCaptcha) {
-      const captchaScreenshot = await page.screenshot({
-        type: 'png',
-        fullPage: false,
-        clip: { x: 0, y: 0, width: 800, height: 600 }
+    // Enviar screenshot con instrucciones interactivas
+    await bot.sendPhoto(chatId, captchaScreenshot, {
+      caption: `🤖 **Captcha detectado - Resolución requerida**
+
+🔗 **Enlace:** \`${link.substring(0, 50)}...\`
+
+📋 **Instrucciones:**
+1️⃣ Toca "🌐 Resolver Captcha" abajo
+2️⃣ Resuelve el captcha en la página
+3️⃣ Espera el resultado
+4️⃣ Copia el enlace final
+
+⏱️ **Tiempo límite:** 5 minutos
+🔄 **Estado:** Esperando resolución...`,
+      parse_mode: 'Markdown',
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '🌐 Resolver Captcha', url: 'https://bypass.vip' }],
+          [{ text: '📋 Pegar enlace manualmente', callback_data: `paste_${chatId}` }],
+          [{ text: '❌ Cancelar', callback_data: `cancel_${chatId}` }]
+        ]
+      }
+    });
+
+    // Mantener el browser abierto y esperar resultado por más tiempo
+    try {
+      await page.waitForSelector('.popup-body', {
+        visible: true,
+        timeout: 300000 // 5 minutos
       });
 
-      await bot.sendPhoto(chatId, captchaScreenshot, {
-        caption: '🤖 Se requiere resolver un captcha. Por favor, visita el enlace manualmente:\nhttps://bypass.vip',
+      const result = await page.$eval('.popup-body', el => el.textContent.trim());
+      
+      await browser.close();
+      
+      // Enviar resultado exitoso
+      const successMessage = `
+✅ **¡Captcha resuelto exitosamente!**
+
+🔗 **Resultado:**
+\`${result}\`
+
+📋 **¡Enlace listo para usar!**
+      `;
+      
+      await bot.sendMessage(chatId, successMessage, { 
+        parse_mode: 'Markdown',
         reply_markup: {
           inline_keyboard: [[
-            { text: '🌐 Abrir bypass.vip', url: 'https://bypass.vip' }
+            { text: '🚀 Abrir enlace', url: result }
           ]]
+        }
+      });
+
+      return result;
+
+    } catch (timeoutError) {
+      await browser.close();
+      
+      // Timeout - enviar mensaje de ayuda
+      const timeoutMessage = `
+⏰ **Tiempo agotado - Captcha no resuelto**
+
+🔄 **Opciones disponibles:**
+
+1️⃣ **Reintentar automático**
+   • Envía el enlace de nuevo
+
+2️⃣ **Resolución manual**
+   • Usa bypass.vip directamente
+   • Pega tu enlace: \`${link}\`
+
+3️⃣ **Alternativas**
+   • Prueba en otro momento
+   • Usa extensión de navegador
+
+💡 **Tip:** El captcha debe resolverse en menos de 5 minutos
+      `;
+      
+      await bot.sendMessage(chatId, timeoutMessage, {
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '🔄 Reintentar', callback_data: `retry_${link.substring(0, 30)}` }],
+            [{ text: '🌐 Bypass manual', url: 'https://bypass.vip' }]
+          ]
         }
       });
 
       return null;
     }
-
-    await page.waitForSelector('.popup-body', {
-      visible: true,
-      timeout: 30000
-    });
-
-    const result = await page.$eval('.popup-body', el => el.textContent.trim());
-    
-    await browser.close();
-    return result;
 
   } catch (error) {
     if (browser) {
@@ -145,6 +210,59 @@ const performBypass = async (link, chatId) => {
     throw error;
   }
 };
+
+// Manejar callback queries (botones inline)
+bot.on('callback_query', async (callbackQuery) => {
+  const chatId = callbackQuery.message.chat.id;
+  const data = callbackQuery.data;
+  
+  if (data.startsWith('retry_')) {
+    const link = data.replace('retry_', '');
+    await bot.answerCallbackQuery(callbackQuery.id, { text: '🔄 Reintentando...' });
+    
+    // Reiniciar proceso
+    const processingMsg = await bot.sendMessage(chatId, '🔄 Reintentando bypass...\n⏳ Preparando captcha...');
+    
+    try {
+      await performBypass(link, chatId);
+      await bot.deleteMessage(chatId, processingMsg.message_id);
+    } catch (error) {
+      await bot.deleteMessage(chatId, processingMsg.message_id);
+      await bot.sendMessage(chatId, '❌ Error en reintento. Usa bypass manual.');
+    }
+    
+  } else if (data.startsWith('paste_')) {
+    await bot.answerCallbackQuery(callbackQuery.id, { text: '📋 Instrucciones enviadas' });
+    
+    const pasteInstructions = `
+📋 **Resolución manual paso a paso:**
+
+1️⃣ **Copia tu enlace:**
+\`${callbackQuery.message.caption.match(/🔗 \*\*Enlace:\*\* \`([^`]+)\`/)?.[1] || 'tu-enlace'}\`
+
+2️⃣ **Ve a bypass.vip**
+3️⃣ **Pega el enlace**
+4️⃣ **Resuelve el captcha**
+5️⃣ **Copia el resultado**
+6️⃣ **¡Listo!**
+
+💡 **Tip:** Mantén esta conversación abierta para futuras consultas
+    `;
+    
+    await bot.sendMessage(chatId, pasteInstructions, {
+      parse_mode: 'Markdown',
+      reply_markup: {
+        inline_keyboard: [[
+          { text: '🌐 Abrir bypass.vip', url: 'https://bypass.vip' }
+        ]]
+      }
+    });
+    
+  } else if (data.startsWith('cancel_')) {
+    await bot.answerCallbackQuery(callbackQuery.id, { text: '❌ Cancelado' });
+    await bot.sendMessage(chatId, '❌ Proceso cancelado. Envía otro enlace cuando quieras.');
+  }
+});
 
 // Manejadores del bot
 const handleStart = (msg) => {
