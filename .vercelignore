@@ -1,0 +1,8 @@
+node_modules/puppeteer
+node_modules/chromium
+screenshots/
+temp/
+logs/
+*.log
+.env
+README.md

@@ -1,0 +1,20 @@
+{
+  "name": "skipbot",
+  "version": "1.0.0",
+  "description": "Telegram bot para bypass automático",
+  "main": "api/index.js",
+  "scripts": {
+    "start": "node api/index.js",
+    "dev": "node api/index.js"
+  },
+  "dependencies": {
+    "node-telegram-bot-api": "^0.64.0",
+    "puppeteer-core": "^21.0.0",
+    "@sparticuz/chromium": "^119.0.0",
+    "express": "^4.18.2",
+    "dotenv": "^16.3.1"
+  },
+  "engines": {
+    "node": "18.x"
+  }
+}
