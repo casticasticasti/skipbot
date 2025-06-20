@@ -1,11 +1,3 @@
-
-
-
-Context
-— 4 new items
-¡Perfecto! Vamos a limpiar el README.md para que sea público y luego configurar el bot correctamente.
-
-📋 README.md público y limpio
 # 🤖 SkipBot
 
 Bot de Telegram para bypass automático de enlaces acortados y protegidos.
