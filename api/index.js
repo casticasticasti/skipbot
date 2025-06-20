@@ -351,6 +351,9 @@ if (process.env.NODE_ENV === 'production') {
     });
   });
 
+  // Para Vercel, necesitamos exportar la app
+module.exports = app;
+
   app.listen(PORT, () => {
     console.log(`🚀 SkipBot webhook listening on port ${PORT}`);
     bot.setWebHook(`${WEBHOOK_URL}/api/webhook`);
