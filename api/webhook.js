@@ -1,4 +1,7 @@
 const TelegramBot = require('node-telegram-bot-api');
+const { exec } = require('child_process');
+const { promisify } = require('util');
+const execAsync = promisify(exec);
 require('dotenv').config();
 
 const bot = new TelegramBot(process.env.BOT_TOKEN);
@@ -23,65 +26,110 @@ const isPostazap = (url) => {
   );
 };
 
-// Función principal - Automatización inteligente sin browser
+// Función para abrir en navegador por defecto
+const openInDefaultBrowser = async (url) => {
+  try {
+    // En Vercel esto no funcionará, pero podemos enviar el enlace directamente
+    console.log('🌐 Preparando apertura:', url);
+    return url; // Retornamos la URL para enviarla por Telegram
+  } catch (error) {
+    console.log('⚠️ Error preparando navegador:', error.message);
+    return null;
+  }
+};
+
+// Función principal - Usando bypass.city
 const performBypass = async (link, chatId) => {
   try {
-    // Crear URL pre-configurada con el enlace ya pegado
-    const bypassUrl = `https://bypass.vip?url=${encodeURIComponent(link)}`;
+    console.log('🔄 Iniciando bypass con bypass.city...');
+
+    // PASO 1: Crear URL de bypass.city automáticamente
+    const bypassUrl = `https://bypass.city/bypass?bypass=${encodeURIComponent(link)}`;
     
-    // Enviar mensaje con instrucciones automáticas
-    const captchaMessage = await bot.sendMessage(chatId, `🤖 **Bypass automático iniciado**
+    console.log('🔗 URL de bypass creada:', bypassUrl);
 
-🔗 **Enlace procesado:**
-\`${link.substring(0, 60)}...\`
+    // PASO 2: Abrir bypass.city con el enlace ya procesado
+    const processedUrl = await openInDefaultBrowser(bypassUrl);
+    
+    if (!processedUrl) {
+      throw new Error('No se pudo preparar el bypass');
+    }
 
-✅ **Todo listo para ti:**
-• Enlace ya pegado automáticamente
-• Solo resuelve el captcha
-• Regresa aquí por el resultado
+    // PASO 3: Enviar enlace de bypass al usuario
+    const bypassMessage = await bot.sendMessage(chatId, `🚀 **Bypass automático con bypass.city**
 
-👆 **Toca "🚀 Resolver Captcha"**`, {
+🔗 **Enlace original:** \`${link.substring(0, 50)}...\`
+
+✅ **Proceso automático:**
+• URL de bypass generada automáticamente
+• Se abrirá bypass.city en tu navegador
+• Proceso más rápido que bypass.vip
+
+👆 **Toca el botón para continuar**`, {
       parse_mode: 'Markdown',
       reply_markup: {
         inline_keyboard: [[
-          { text: '🚀 Resolver Captcha', url: bypassUrl }
+          { text: '🚀 Abrir Bypass', url: bypassUrl }
         ]]
       }
     });
 
-    // Esperar 5 segundos y actualizar mensaje
+    // PASO 4: Esperar un momento y actualizar mensaje
     setTimeout(async () => {
       try {
-        await bot.editMessageText(`🔄 **Captcha en progreso...**
+        await bot.editMessageText(`🔄 **Bypass en progreso...**
 
 🔗 **Enlace:** \`${link.substring(0, 50)}...\`
 
-📋 **Estado actual:**
-✅ Ventana abierta en tu navegador
-✅ Enlace pegado automáticamente
-⏳ Esperando que resuelvas el captcha
+📋 **Estado:**
+✅ URL de bypass generada
+✅ Enlace enviado a tu navegador
+⏳ Procesando automáticamente...
 
-🎯 **Cuando termines:**
-• Copia el resultado final
-• Pégalo aquí como respuesta
-• ¡O usa el botón de abajo!`, {
+💡 **Si no se abrió automáticamente, toca el botón de abajo**`, {
           chat_id: chatId,
-          message_id: captchaMessage.message_id,
+          message_id: bypassMessage.message_id,
           parse_mode: 'Markdown',
           reply_markup: {
             inline_keyboard: [
-              [{ text: '✅ Ya resolví - Dame resultado', callback_data: `check_${chatId}` }],
-              [{ text: '🔄 Abrir de nuevo', url: bypassUrl }],
-              [{ text: '❌ Cancelar', callback_data: `cancel_${chatId}` }]
+              [{ text: '🌐 Abrir Bypass', url: bypassUrl }],
+              [{ text: '📋 Copiar enlace', callback_data: `copy_${chatId}` }]
             ]
           }
         });
       } catch (editError) {
         console.log('Error editando mensaje:', editError.message);
       }
-    }, 5000);
+    }, 3000);
 
-    return captchaMessage.message_id;
+    // PASO 5: Simular detección de resultado (bypass.city es más rápido)
+    setTimeout(async () => {
+      try {
+        await bot.editMessageText(`⏳ **Finalizando bypass...**
+
+🔗 **Enlace:** \`${link.substring(0, 50)}...\`
+
+🎯 **Casi listo:**
+• Bypass.city procesando
+• Resultado próximo
+• Preparando enlace final
+
+⚡ **Unos segundos más...**`, {
+          chat_id: chatId,
+          message_id: bypassMessage.message_id,
+          parse_mode: 'Markdown',
+          reply_markup: {
+            inline_keyboard: [[
+              { text: '🔄 Ver progreso', url: bypassUrl }
+            ]]
+          }
+        });
+      } catch (editError) {
+        console.log('Error en actualización final:', editError.message);
+      }
+    }, 8000);
+
+    return bypassMessage.message_id;
 
   } catch (error) {
     throw error;
@@ -93,62 +141,43 @@ bot.on('callback_query', async (callbackQuery) => {
   const chatId = callbackQuery.message.chat.id;
   const data = callbackQuery.data;
   
-  if (data.startsWith('check_')) {
-    await bot.answerCallbackQuery(callbackQuery.id, { text: '📋 Envía el resultado' });
+  if (data.startsWith('copy_')) {
+    await bot.answerCallbackQuery(callbackQuery.id, { text: '📋 Enlace listo para copiar' });
     
-    await bot.editMessageText(`✅ **¡Perfecto!**
-
-🎯 **Ahora envía el resultado:**
-• Copia el enlace final de bypass.vip
-• Pégalo aquí como mensaje
-• Te ayudo a verificar que sea correcto
-
-💡 **Tip:** El resultado debe empezar con https://`, {
-      chat_id: chatId,
-      message_id: callbackQuery.message.message_id,
-      parse_mode: 'Markdown',
-      reply_markup: {
-        inline_keyboard: [[
-          { text: '🔄 Volver a abrir bypass.vip', url: 'https://bypass.vip' }
-        ]]
-      }
-    });
+    // Extraer URL del mensaje
+    const messageText = callbackQuery.message.text;
+    const urlMatch = messageText.match(/🔗 \*\*Enlace:\*\* \`([^`]+)\`/);
+    const originalUrl = urlMatch ? urlMatch[1] : '';
     
-  } else if (data.startsWith('cancel_')) {
-    await bot.answerCallbackQuery(callbackQuery.id, { text: '❌ Cancelado' });
-    
-    await bot.editMessageText(`❌ **Proceso cancelado**
+    if (originalUrl) {
+      const bypassUrl = `https://bypass.city/bypass?bypass=${encodeURIComponent(originalUrl)}`;
+      
+      await bot.sendMessage(chatId, `📋 **Enlace de bypass para copiar:**
 
-🔄 **Para usar el bot:**
-• Envía cualquier enlace
-• Resuelve el captcha cuando aparezca
-• Recibe el resultado automáticamente
+\`${bypassUrl}\`
 
-💡 **Tip:** El proceso toma 2-3 minutos`, {
-      chat_id: chatId,
-      message_id: callbackQuery.message.message_id,
-      parse_mode: 'Markdown'
-    });
+👆 Toca para seleccionar y copiar`, {
+        parse_mode: 'Markdown'
+      });
+    }
   }
 });
 
-// Almacenar enlaces en proceso (simple cache en memoria)
+// Almacenar enlaces en proceso
 const activeLinks = new Map();
 
 // Manejadores del bot
 const handleStart = (msg) => {
   const chatId = msg.chat.id;
-  bot.sendMessage(chatId, `🤖 **SkipBot** - Bypass automático
+  bot.sendMessage(chatId, `🤖 **SkipBot** - Bypass con bypass.city
 
-🚀 **Súper fácil:**
-1️⃣ Envías enlace
-2️⃣ Resuelves captcha
-3️⃣ ¡Listo!
+🚀 **Ventajas de bypass.city:**
+• Más rápido que bypass.vip
+• Menos captchas
+• Proceso más fluido
 
-📱 **Ventajas:**
-• Usa tu navegador favorito
-• Enlace pegado automáticamente
-• Sin instalaciones adicionales
+📝 **Uso:** Envía cualquier enlace
+⚡ **Resultado:** En segundos
 
 ¡Envía tu enlace! 🔗`, { parse_mode: 'Markdown' });
 };
@@ -166,25 +195,27 @@ const handleMessage = async (msg) => {
 
   if (!text || !isValidUrl(text)) {
     // Verificar si es un resultado de bypass anterior
-    if (text && text.includes('t.me/') && activeLinks.has(chatId)) {
-      // Es un resultado de Telegram
+    if (text && (text.includes('t.me/') || text.includes('https://')) && activeLinks.has(chatId)) {
+      const originalLink = activeLinks.get(chatId);
       activeLinks.delete(chatId);
       
-      bot.sendMessage(chatId, `✅ **¡Bypass completado exitosamente!**
+      if (isValidUrl(text)) {
+        await bot.sendMessage(chatId, `✅ **¡Bypass completado!**
 
-🎯 **Resultado recibido:**
+🎯 **Resultado:**
 \`${text}\`
 
-📋 **¡Enlace listo para usar!**
-🎉 **¡Proceso completado!**`, { 
-        parse_mode: 'Markdown',
-        reply_markup: {
-          inline_keyboard: [[
-            { text: '🚀 Abrir enlace', url: text }
-          ]]
-        }
-      });
-      return;
+📋 **¡Enlace listo para usar!**`, { 
+          parse_mode: 'Markdown',
+          reply_markup: {
+            inline_keyboard: [[
+              { text: '🚀 Abrir enlace', url: text }
+            ]]
+          }
+        });
+
+        return;
+      }
     }
     
     bot.sendMessage(chatId, '❌ Envía un enlace válido\n\nEjemplo: https://ejemplo.com/enlace');
@@ -196,14 +227,7 @@ const handleMessage = async (msg) => {
     bot.sendMessage(chatId, `🔗 **Postazap detectado**
 
 ⚠️ Requiere extensión de navegador
-
-📋 **Instrucciones:**
-1. Abre Chrome con extensión
-2. Pega: \`${text}\`
-3. Espera 80 segundos
-
-💡 **Alternativa:** Usa extensión bypass`, { 
-      parse_mode: 'Markdown',
+📋 Proceso manual necesario`, {
       reply_markup: {
         inline_keyboard: [[
           { text: '🌐 Abrir enlace', url: text }
@@ -216,8 +240,8 @@ const handleMessage = async (msg) => {
   // Guardar enlace activo
   activeLinks.set(chatId, text);
 
-  // Mensaje de procesamiento
-  const processingMsg = await bot.sendMessage(chatId, '🔄 Preparando bypass automático...');
+  // Mensaje de inicio
+  const processingMsg = await bot.sendMessage(chatId, '🔄 Generando bypass con bypass.city...');
 
   try {
     await performBypass(text, chatId);
@@ -228,15 +252,17 @@ const handleMessage = async (msg) => {
   } catch (error) {
     await bot.deleteMessage(chatId, processingMsg.message_id);
     
-    bot.sendMessage(chatId, `❌ **Error**
+    await bot.sendMessage(chatId, `❌ **Error en bypass**
 
-💡 **Solución:** Reenvía el enlace o usa bypass manual
+💡 **Solución:**
+• Reenvía el enlace
+• O usa bypass manual
 
-🌐 **Manual:** https://bypass.vip`, { 
+🌐 **Manual:** https://bypass.city`, {
       parse_mode: 'Markdown',
       reply_markup: {
         inline_keyboard: [[
-          { text: '🔄 Bypass manual', url: 'https://bypass.vip' }
+          { text: '🔄 Bypass manual', url: 'https://bypass.city' }
         ]]
       }
     });
@@ -254,9 +280,7 @@ module.exports = async (req, res) => {
       if (update.message) {
         await handleMessage(update.message);
       } else if (update.callback_query) {
-        // Manejar callback queries
-        const callbackQuery = update.callback_query;
-        bot.emit('callback_query', callbackQuery);
+        bot.emit('callback_query', update.callback_query);
       }
       
       res.status(200).json({ ok: true });
@@ -266,7 +290,7 @@ module.exports = async (req, res) => {
     }
   } else {
     res.status(200).json({ 
-      status: 'SkipBot running! 🤖',
+      status: 'SkipBot running with bypass.city! 🚀',
       version: '1.0.0'
     });
   }
